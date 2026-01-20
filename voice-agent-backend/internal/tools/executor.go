@@ -3,27 +3,30 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/voice-agent/backend/internal/database"
 	"github.com/voice-agent/backend/internal/models"
+	"github.com/voice-agent/backend/pkg/utils"
 )
 
 // ToolExecutor handles the execution of tool calls
 type ToolExecutor struct {
-	sessionID   string
-	userPhone   string
-	userName    string
-	onToolCall  func(payload models.ToolCallPayload)
+	sessionID    string
+	userPhone    string
+	userName     string
+	onToolCall   func(payload models.ToolCallPayload)
 	onToolResult func(payload models.ToolResultPayload)
 }
 
 // NewToolExecutor creates a new tool executor for a session
 func NewToolExecutor(sessionID string, onToolCall func(models.ToolCallPayload), onToolResult func(models.ToolResultPayload)) *ToolExecutor {
 	return &ToolExecutor{
-		sessionID:   sessionID,
-		onToolCall:  onToolCall,
+		sessionID:    sessionID,
+		onToolCall:   onToolCall,
 		onToolResult: onToolResult,
 	}
 }
@@ -108,9 +111,81 @@ func (e *ToolExecutor) identifyUser(args map[string]interface{}) (interface{}, e
 	}
 
 	name, _ := args["name"].(string)
+	email, _ := args["email"].(string)
 
-	// Normalize phone number (basic)
-	phone = normalizePhoneNumber(phone)
+	// Clean and normalize inputs
+	phone = strings.TrimSpace(phone)
+	name = strings.TrimSpace(name)
+	email = strings.TrimSpace(email)
+
+	// Log raw inputs for debugging
+	log.Printf("[identifyUser] Raw inputs - Phone: '%s', Name: '%s', Email: '%s'", phone, name, email)
+
+	// Validate and normalize phone number FIRST
+	validator := utils.NewPhoneValidator()
+	isValid, normalizedPhone, err := validator.ValidatePhoneNumber(phone)
+	if !isValid {
+		log.Printf("[identifyUser] ERROR: Phone validation failed - %v", err)
+		return nil, fmt.Errorf("invalid phone number: %w", err)
+	}
+	phone = normalizedPhone
+	log.Printf("[identifyUser] Phone validated and normalized to: %s", phone)
+
+	// Check if user already exists
+	existingUser, err := database.DB.GetUserByPhone(phone)
+	if err != nil {
+		log.Printf("[identifyUser] ERROR: Failed to check if user exists: %v", err)
+		return nil, fmt.Errorf("failed to check user: %w", err)
+	}
+
+	// If user exists, use their existing data
+	if existingUser != nil {
+		log.Printf("[identifyUser] User already exists - Phone: %s, Name: %s, Email: %s", existingUser.PhoneNumber, existingUser.Name, existingUser.Email)
+
+		// Set identity and return existing user
+		e.SetUserIdentity(phone, existingUser.Name)
+
+		return map[string]interface{}{
+			"success":      true,
+			"user_id":      existingUser.ID,
+			"phone_number": existingUser.PhoneNumber,
+			"name":         existingUser.Name,
+			"email":        existingUser.Email,
+			"is_new_user":  false,
+			"message":      fmt.Sprintf("Welcome back, %s! Successfully identified using your phone number.", existingUser.Name),
+		}, nil
+	}
+
+	// User does NOT exist - require name and email for new registration
+	log.Printf("[identifyUser] User does not exist - phone %s is new", phone)
+
+	// Clean up name: remove extra spaces between characters
+	nameClean := strings.Join(strings.Fields(name), " ")
+
+	// Validate name is provided and not null/empty
+	if nameClean == "" || nameClean == "null" || nameClean == "null." {
+		log.Printf("[identifyUser] ERROR: Name validation failed - name is empty or null for new user")
+		return nil, fmt.Errorf("name is required for new registration. Please provide your full name")
+	}
+
+	// Remove trailing punctuation from name
+	nameClean = strings.TrimRight(nameClean, ".,;:")
+
+	// Validate email is provided and not null/empty
+	if email == "" || email == "null" || email == "null." {
+		log.Printf("[identifyUser] ERROR: Email validation failed - email is empty or null for new user")
+		return nil, fmt.Errorf("email is required for new registration. Please provide a valid email address")
+	}
+
+	// Validate email format
+	emailValidator := utils.NewEmailValidator()
+	isValidEmail, normalizedEmail, err := emailValidator.ValidateEmail(email)
+	if !isValidEmail {
+		log.Printf("[identifyUser] ERROR: Email validation failed - %v", err)
+		return nil, fmt.Errorf("invalid email address: %w", err)
+	}
+	email = normalizedEmail
+	log.Printf("[identifyUser] Email validated and normalized to: %s", email)
 
 	// Check if user exists
 	user, err := database.DB.GetUserByPhone(phone)
@@ -119,22 +194,48 @@ func (e *ToolExecutor) identifyUser(args map[string]interface{}) (interface{}, e
 	}
 
 	if user == nil {
-		// Create new user
+		// Create new user (with validated phone, name, and email)
 		user = &models.User{
 			ID:          uuid.New().String(),
 			PhoneNumber: phone,
-			Name:        name,
+			Name:        nameClean,
+			Email:       email,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}
 		if err := database.DB.CreateUser(user); err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
-	} else if name != "" && user.Name == "" {
-		// Update name if not set
-		user.Name = name
-		user.UpdatedAt = time.Now()
-		_ = database.DB.UpdateUser(user)
+	} else {
+		// User already exists
+		updateNeeded := false
+
+		// Update name if previously null
+		if user.Name == "" || user.Name == "null" {
+			user.Name = nameClean
+			updateNeeded = true
+		} else if nameClean != user.Name {
+			// Name mismatch - could be a different person
+			return nil, fmt.Errorf("phone number already registered under a different name: %s. Please verify or use a different phone number", user.Name)
+		}
+
+		// Update email if previously null
+		// Compare emails case-insensitively (both should be lowercase from normalization)
+		storedEmailLower := strings.ToLower(user.Email)
+		providedEmailLower := strings.ToLower(email)
+
+		if user.Email == "" || user.Email == "null" {
+			user.Email = email
+			updateNeeded = true
+		} else if storedEmailLower != providedEmailLower {
+			// Email exists but different - could be a security concern
+			return nil, fmt.Errorf("phone number already registered with a different email: %s. Please verify or use a different phone number", user.Email)
+		}
+
+		if updateNeeded {
+			user.UpdatedAt = time.Now()
+			_ = database.DB.UpdateUser(user)
+		}
 	}
 
 	e.SetUserIdentity(phone, user.Name)
@@ -144,7 +245,8 @@ func (e *ToolExecutor) identifyUser(args map[string]interface{}) (interface{}, e
 		"user_id":      user.ID,
 		"phone_number": user.PhoneNumber,
 		"name":         user.Name,
-		"is_new_user":  user.Name == name && name != "",
+		"email":        user.Email,
+		"is_new_user":  user.Name == nameClean,
 		"message":      fmt.Sprintf("User identified: %s (%s)", user.Name, user.PhoneNumber),
 	}, nil
 }
@@ -180,10 +282,10 @@ func (e *ToolExecutor) fetchSlots(args map[string]interface{}) (interface{}, err
 			}
 
 			slots = append(slots, map[string]interface{}{
-				"date_time":  slotTime.Format(time.RFC3339),
-				"time":       slotTime.Format("3:04 PM"),
-				"available":  available,
-				"duration":   30,
+				"date_time": slotTime.Format(time.RFC3339),
+				"time":      slotTime.Format("3:04 PM"),
+				"available": available,
+				"duration":  30,
 			})
 		}
 	}
@@ -205,7 +307,10 @@ func (e *ToolExecutor) fetchSlots(args map[string]interface{}) (interface{}, err
 }
 
 func (e *ToolExecutor) bookAppointment(args map[string]interface{}) (interface{}, error) {
+	log.Printf("[bookAppointment] Starting with args: %v", args)
+
 	if e.userPhone == "" {
+		log.Printf("[bookAppointment] ERROR: User not identified")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "User not identified. Please identify the user first by asking for their phone number.",
@@ -214,16 +319,36 @@ func (e *ToolExecutor) bookAppointment(args map[string]interface{}) (interface{}
 
 	dateTimeStr, ok := args["date_time"].(string)
 	if !ok || dateTimeStr == "" {
+		log.Printf("[bookAppointment] ERROR: date_time is required or invalid type")
 		return nil, fmt.Errorf("date_time is required")
 	}
 
-	dateTime, err := time.Parse(time.RFC3339, dateTimeStr)
+	log.Printf("[bookAppointment] Attempting to parse date_time: '%s'", dateTimeStr)
+
+	// Try multiple date formats
+	var dateTime time.Time
+	var err error
+
+	// Try RFC3339 first
+	dateTime, err = time.Parse(time.RFC3339, dateTimeStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid date_time format, use ISO 8601 (e.g., 2024-01-15T10:00:00Z)")
+		// Try ISO date format
+		dateTime, err = time.Parse("2006-01-02T15:04:05", dateTimeStr)
+		if err != nil {
+			// Try another format
+			dateTime, err = time.Parse("2006-01-02 15:04:05", dateTimeStr)
+			if err != nil {
+				log.Printf("[bookAppointment] ERROR: Cannot parse date_time '%s': %v", dateTimeStr, err)
+				return nil, fmt.Errorf("invalid date_time format, use ISO 8601 (e.g., 2024-01-15T10:00:00Z or 2024-01-15T10:00:00)")
+			}
+		}
 	}
+
+	log.Printf("[bookAppointment] Parsed date_time to: %s", dateTime)
 
 	// Check if slot is in the past
 	if dateTime.Before(time.Now()) {
+		log.Printf("[bookAppointment] ERROR: Slot is in the past")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "Cannot book appointments in the past",
@@ -234,14 +359,17 @@ func (e *ToolExecutor) bookAppointment(args map[string]interface{}) (interface{}
 	if d, ok := args["duration"].(float64); ok {
 		duration = int(d)
 	}
+	log.Printf("[bookAppointment] Duration: %d minutes", duration)
 
 	// Check slot availability
 	available, err := database.DB.CheckSlotAvailability(dateTime, duration)
 	if err != nil {
+		log.Printf("[bookAppointment] ERROR: Failed to check availability: %v", err)
 		return nil, fmt.Errorf("failed to check availability: %w", err)
 	}
 
 	if !available {
+		log.Printf("[bookAppointment] ERROR: Slot not available")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "This time slot is already booked. Please choose another time.",
@@ -250,6 +378,8 @@ func (e *ToolExecutor) bookAppointment(args map[string]interface{}) (interface{}
 
 	purpose, _ := args["purpose"].(string)
 	notes, _ := args["notes"].(string)
+
+	log.Printf("[bookAppointment] Creating appointment - User: %s, Phone: %s, Purpose: %s", e.userName, e.userPhone, purpose)
 
 	appointment := &models.Appointment{
 		ID:        uuid.New().String(),
@@ -265,8 +395,11 @@ func (e *ToolExecutor) bookAppointment(args map[string]interface{}) (interface{}
 	}
 
 	if err := database.DB.CreateAppointment(appointment); err != nil {
+		log.Printf("[bookAppointment] ERROR: Failed to create appointment: %v", err)
 		return nil, fmt.Errorf("failed to book appointment: %w", err)
 	}
+
+	log.Printf("[bookAppointment] SUCCESS: Appointment created with ID: %s", appointment.ID)
 
 	return map[string]interface{}{
 		"success":        true,
@@ -279,7 +412,10 @@ func (e *ToolExecutor) bookAppointment(args map[string]interface{}) (interface{}
 }
 
 func (e *ToolExecutor) retrieveAppointments(args map[string]interface{}) (interface{}, error) {
+	log.Printf("[retrieveAppointments] Starting with userPhone: %s", e.userPhone)
+
 	if e.userPhone == "" {
+		log.Printf("[retrieveAppointments] ERROR: User not identified")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "User not identified. Please identify the user first by asking for their phone number.",
@@ -291,6 +427,8 @@ func (e *ToolExecutor) retrieveAppointments(args map[string]interface{}) (interf
 		retrieveType = "upcoming"
 	}
 
+	log.Printf("[retrieveAppointments] Retrieving %s appointments for phone: %s", retrieveType, e.userPhone)
+
 	var appointments []models.Appointment
 	var err error
 
@@ -301,8 +439,11 @@ func (e *ToolExecutor) retrieveAppointments(args map[string]interface{}) (interf
 	}
 
 	if err != nil {
+		log.Printf("[retrieveAppointments] ERROR: Failed to retrieve appointments: %v", err)
 		return nil, fmt.Errorf("failed to retrieve appointments: %w", err)
 	}
+
+	log.Printf("[retrieveAppointments] Retrieved %d appointments", len(appointments))
 
 	formattedAppointments := make([]map[string]interface{}, len(appointments))
 	for i, apt := range appointments {
@@ -321,6 +462,8 @@ func (e *ToolExecutor) retrieveAppointments(args map[string]interface{}) (interf
 		message = fmt.Sprintf("No %s appointments found", retrieveType)
 	}
 
+	log.Printf("[retrieveAppointments] SUCCESS: %s", message)
+
 	return map[string]interface{}{
 		"success":      true,
 		"appointments": formattedAppointments,
@@ -331,7 +474,10 @@ func (e *ToolExecutor) retrieveAppointments(args map[string]interface{}) (interf
 }
 
 func (e *ToolExecutor) cancelAppointment(args map[string]interface{}) (interface{}, error) {
+	log.Printf("[cancelAppointment] Starting with userPhone: %s", e.userPhone)
+
 	if e.userPhone == "" {
+		log.Printf("[cancelAppointment] ERROR: User not identified")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "User not identified. Please identify the user first.",
@@ -340,15 +486,20 @@ func (e *ToolExecutor) cancelAppointment(args map[string]interface{}) (interface
 
 	appointmentID, ok := args["appointment_id"].(string)
 	if !ok || appointmentID == "" {
+		log.Printf("[cancelAppointment] ERROR: appointment_id is required")
 		return nil, fmt.Errorf("appointment_id is required")
 	}
 
+	log.Printf("[cancelAppointment] Fetching appointment ID: %s", appointmentID)
+
 	appointment, err := database.DB.GetAppointmentByID(appointmentID)
 	if err != nil {
+		log.Printf("[cancelAppointment] ERROR: Failed to get appointment: %v", err)
 		return nil, fmt.Errorf("failed to get appointment: %w", err)
 	}
 
 	if appointment == nil {
+		log.Printf("[cancelAppointment] ERROR: Appointment not found")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "Appointment not found",
@@ -357,6 +508,7 @@ func (e *ToolExecutor) cancelAppointment(args map[string]interface{}) (interface
 
 	// Verify ownership
 	if appointment.UserPhone != e.userPhone {
+		log.Printf("[cancelAppointment] ERROR: Phone mismatch - appointment phone: %s, user phone: %s", appointment.UserPhone, e.userPhone)
 		return map[string]interface{}{
 			"success": false,
 			"error":   "You can only cancel your own appointments",
@@ -364,6 +516,7 @@ func (e *ToolExecutor) cancelAppointment(args map[string]interface{}) (interface
 	}
 
 	if appointment.Status == models.StatusCancelled {
+		log.Printf("[cancelAppointment] ERROR: Appointment already cancelled")
 		return map[string]interface{}{
 			"success": false,
 			"error":   "Appointment is already cancelled",
@@ -377,9 +530,14 @@ func (e *ToolExecutor) cancelAppointment(args map[string]interface{}) (interface
 		appointment.Notes = fmt.Sprintf("%s\nCancellation reason: %s", appointment.Notes, reason)
 	}
 
+	log.Printf("[cancelAppointment] Updating appointment status to cancelled")
+
 	if err := database.DB.UpdateAppointment(appointment); err != nil {
+		log.Printf("[cancelAppointment] ERROR: Failed to cancel appointment: %v", err)
 		return nil, fmt.Errorf("failed to cancel appointment: %w", err)
 	}
+
+	log.Printf("[cancelAppointment] SUCCESS: Appointment cancelled - ID: %s", appointmentID)
 
 	return map[string]interface{}{
 		"success":        true,
@@ -515,11 +673,11 @@ func (e *ToolExecutor) endConversation(args map[string]interface{}) (interface{}
 	reason, _ := args["reason"].(string)
 
 	return map[string]interface{}{
-		"success":     true,
-		"action":      "end_conversation",
-		"reason":      reason,
-		"message":     "Conversation ended",
-		"should_end":  true,
+		"success":    true,
+		"action":     "end_conversation",
+		"reason":     reason,
+		"message":    "Conversation ended",
+		"should_end": true,
 	}, nil
 }
 

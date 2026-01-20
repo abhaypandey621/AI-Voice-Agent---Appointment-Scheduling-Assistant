@@ -21,19 +21,19 @@ type Config struct {
 	DeepgramAPIKey string
 
 	// Cartesia
-	CartesiaAPIKey string
+	CartesiaAPIKey  string
 	CartesiaVoiceID string
 
 	// LLM (OpenAI or compatible)
-	LLMProvider   string
-	LLMAPIKey     string
-	LLMBaseURL    string
-	LLMModel      string
+	LLMProvider string
+	LLMAPIKey   string
+	LLMBaseURL  string
+	LLMModel    string
 
 	// Avatar (Beyond Presence / Tavus)
-	AvatarProvider   string
-	AvatarAPIKey     string
-	AvatarAvatarID   string
+	AvatarProvider string
+	AvatarAPIKey   string
+	AvatarAvatarID string
 
 	// Supabase
 	SupabaseURL    string
@@ -43,6 +43,9 @@ type Config struct {
 	DeepgramPricePerMin  float64
 	CartesiaPricePerChar float64
 	LLMPricePerToken     float64
+
+	// Stripe
+	StripeSecretKey string
 }
 
 var AppConfig *Config

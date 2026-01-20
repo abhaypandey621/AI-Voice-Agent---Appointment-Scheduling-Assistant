@@ -3,7 +3,9 @@ package websocket
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,18 +25,18 @@ var upgrader = websocket.Upgrader{
 
 // Client represents a WebSocket client connection
 type Client struct {
-	conn       *websocket.Conn
-	agent      *agent.VoiceAgent
-	send       chan []byte
-	done       chan struct{}
-	mu         sync.Mutex
+	conn  *websocket.Conn
+	agent *agent.VoiceAgent
+	send  chan []byte
+	done  chan struct{}
+	mu    sync.Mutex
 }
 
 // Manager manages WebSocket connections
 type Manager struct {
-	clients    map[string]*Client
-	config     *config.Config
-	mu         sync.RWMutex
+	clients map[string]*Client
+	config  *config.Config
+	mu      sync.RWMutex
 }
 
 // NewManager creates a new WebSocket manager
@@ -203,7 +205,23 @@ func (c *Client) readPump(m *Manager) {
 			case "text_input":
 				// Direct text input (for testing without audio)
 				if text, ok := msg.Payload.(string); ok && c.agent != nil {
-					c.agent.ProcessTextInput(text)
+					// Validate text input - reject null/empty values
+					cleanText := strings.TrimSpace(text)
+					if cleanText == "" || cleanText == "null" || cleanText == "undefined" {
+						c.sendMessage(models.WSMessage{
+							Type:    models.WSTypeError,
+							Payload: "Invalid input: Please provide valid text",
+						})
+						continue
+					}
+					log.Printf("Received text input: %s", cleanText)
+					c.agent.ProcessTextInput(cleanText)
+				} else {
+					log.Printf("Invalid text input payload: %v", msg.Payload)
+					c.sendMessage(models.WSMessage{
+						Type:    models.WSTypeError,
+						Payload: "Invalid text input format",
+					})
 				}
 
 			case "end_call":

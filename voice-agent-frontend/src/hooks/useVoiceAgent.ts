@@ -124,6 +124,15 @@ export function useVoiceAgent(
     store.setError(null);
 
     try {
+      // First, check if the backend is available
+      try {
+        await api.healthCheck();
+        console.log('Backend health check passed');
+      } catch (healthError) {
+        console.error('Backend health check failed:', healthError);
+        throw new Error('Backend server is not responding. Please ensure the backend is running on port 8080.');
+      }
+
       // Create avatar session if available
       try {
         const avatarSession = await api.createAvatarSession();
@@ -245,12 +254,17 @@ export function useVoiceAgent(
       return;
     }
 
-    wsService.sendTextInput(text);
-    store.addMessage({
-      role: 'user',
-      content: text,
-      timestamp: new Date().toISOString(),
-    });
+    // Validate and clean text input
+    const cleanText = text?.trim() || '';
+    if (!cleanText || cleanText === 'null' || cleanText === 'undefined') {
+      console.warn('Invalid text input - cannot send empty or null values');
+      store.setError('Please enter valid text');
+      return;
+    }
+
+    wsService.sendTextInput(cleanText);
+    // Don't add message here - the backend will send a transcript callback
+    // which will add the user message to avoid duplicates
     store.setCallState('processing');
     store.setAvatarState('thinking');
   }, [store]);

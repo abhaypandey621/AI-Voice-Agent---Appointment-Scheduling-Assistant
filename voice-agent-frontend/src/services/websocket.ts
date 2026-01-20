@@ -38,9 +38,18 @@ export class WebSocketService {
   private pingInterval: number | null = null;
 
   constructor(url?: string) {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = import.meta.env.VITE_WS_URL || `${wsProtocol}//${window.location.host}`;
-    this.url = url || `${wsHost}/ws`;
+    if (url) {
+      this.url = url;
+    } else if (import.meta.env.VITE_WS_URL) {
+      // Use configured WebSocket URL (should include /ws path)
+      const baseUrl = import.meta.env.VITE_WS_URL;
+      this.url = baseUrl.endsWith('/ws') ? baseUrl : `${baseUrl}/ws`;
+    } else {
+      // Fallback to same origin
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.url = `${wsProtocol}//${window.location.host}/ws`;
+    }
+    console.log('WebSocket URL configured:', this.url);
   }
 
   connect(roomName?: string, handlers?: WSEventHandlers): Promise<void> {
@@ -199,7 +208,15 @@ export class WebSocketService {
 
   // Convenience methods
   sendTextInput(text: string): void {
-    this.send({ type: 'text_input', payload: text });
+    // Validate text input
+    const cleanText = text?.trim() || '';
+
+    if (!cleanText || cleanText === 'null' || cleanText === 'undefined') {
+      console.warn('Invalid text input - cannot send empty or null values');
+      return;
+    }
+
+    this.send({ type: 'text_input', payload: cleanText });
   }
 
   endCall(): void {

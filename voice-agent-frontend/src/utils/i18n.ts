@@ -1,0 +1,150 @@
+import { create } from 'zustand';
+
+export type Language = 'en' | 'es' | 'fr' | 'de' | 'hi' | 'ja' | 'zh';
+
+interface LanguageState {
+    language: Language;
+    setLanguage: (language: Language) => void;
+}
+
+export const useLanguageStore = create<LanguageState>((set) => ({
+    language: (localStorage.getItem('language') as Language) || 'en',
+    setLanguage: (language: Language) => {
+        localStorage.setItem('language', language);
+        set({ language });
+    },
+}));
+
+export const translations: Record<Language, Record<string, any>> = {
+    en: {
+        greeting: 'Hello! I\'m your AI appointment assistant. How can I help you today?',
+        startCall: 'Start Call',
+        endCall: 'End Call',
+        bookAppointment: 'Book Appointments',
+        manageSchedule: 'Manage Schedule',
+        getSummary: 'Get Summary',
+        askPhone: 'Please provide your phone number so I can identify you.',
+        askName: 'May I have your name please?',
+        askTime: 'What time would you like to book your appointment?',
+        askDate: 'What date would you prefer for your appointment?',
+        askPurpose: 'What is the purpose of your appointment?',
+        confirmBooking: 'I\'ll book an appointment for you on %date% at %time%. Is that correct?',
+        bookingConfirmed: 'Your appointment has been confirmed! You\'ll receive a reminder 24 hours before.',
+        invalidPhone: 'The phone number you provided is invalid. Please try again.',
+        slotUnavailable: 'The selected time slot is not available. Please choose another time.',
+        userNotFound: 'User not found. Please provide a valid phone number.',
+    },
+    es: {
+        greeting: '¡Hola! Soy tu asistente de citas de IA. ¿Cómo puedo ayudarte hoy?',
+        startCall: 'Iniciar Llamada',
+        endCall: 'Finalizar Llamada',
+        bookAppointment: 'Reservar Citas',
+        manageSchedule: 'Gestionar Horario',
+        getSummary: 'Obtener Resumen',
+        askPhone: 'Por favor, proporcione su número de teléfono para identificarle.',
+        askName: '¿Podría darme su nombre, por favor?',
+        askTime: '¿A qué hora le gustaría reservar su cita?',
+        askDate: '¿Qué fecha prefiere para su cita?',
+        askPurpose: '¿Cuál es el propósito de su cita?',
+        confirmBooking: 'Reservaré una cita para usted el %date% a las %time%. ¿Es correcto?',
+        bookingConfirmed: '¡Su cita ha sido confirmada! Recibirá un recordatorio 24 horas antes.',
+        invalidPhone: 'El número de teléfono que proporcionó no es válido. Por favor, intente de nuevo.',
+        slotUnavailable: 'La hora seleccionada no está disponible. Por favor, elija otro tiempo.',
+        userNotFound: 'Usuario no encontrado. Por favor proporcione un número de teléfono válido.',
+    },
+    fr: {
+        greeting: 'Bonjour! Je suis votre assistant de rendez-vous IA. Comment puis-je vous aider aujourd\'hui?',
+        startCall: 'Démarrer l\'appel',
+        endCall: 'Terminer l\'appel',
+        bookAppointment: 'Réserver des Rendez-vous',
+        manageSchedule: 'Gérer l\'Horaire',
+        getSummary: 'Obtenir un Résumé',
+        askPhone: 'Veuillez fournir votre numéro de téléphone pour que je vous identifie.',
+        askName: 'Puis-je avoir votre nom, s\'il vous plaît?',
+        askTime: 'À quelle heure souhaiteriez-vous réserver votre rendez-vous?',
+        askDate: 'Quelle date préférez-vous pour votre rendez-vous?',
+        askPurpose: 'Quel est l\'objet de votre rendez-vous?',
+        confirmBooking: 'Je vais vous réserver un rendez-vous le %date% à %time%. Est-ce correct?',
+        bookingConfirmed: 'Votre rendez-vous a été confirmé! Vous recevrez un rappel 24 heures avant.',
+        invalidPhone: 'Le numéro de téléphone que vous avez fourni est invalide. Veuillez réessayer.',
+        slotUnavailable: 'Le créneau horaire sélectionné n\'est pas disponible. Veuillez choisir un autre créneau.',
+        userNotFound: 'Utilisateur non trouvé. Veuillez fournir un numéro de téléphone valide.',
+    },
+    de: {
+        greeting: 'Hallo! Ich bin dein KI-Termin-Assistent. Wie kann ich dir heute helfen?',
+        startCall: 'Anruf starten',
+        endCall: 'Anruf beenden',
+        bookAppointment: 'Termine buchen',
+        manageSchedule: 'Zeitplan verwalten',
+        getSummary: 'Zusammenfassung abrufen',
+        askPhone: 'Bitte geben Sie Ihre Telefonnummer an, um Sie zu identifizieren.',
+        askName: 'Kann ich bitte Ihren Namen erfahren?',
+        askTime: 'Zu welcher Zeit möchten Sie Ihren Termin buchen?',
+        askDate: 'Welches Datum bevorzugen Sie für Ihren Termin?',
+        askPurpose: 'Was ist der Zweck Ihres Termins?',
+        confirmBooking: 'Ich buche Ihnen einen Termin am %date% um %time%. Ist das korrekt?',
+        bookingConfirmed: 'Ihr Termin wurde bestätigt! Sie erhalten 24 Stunden vorher eine Erinnerung.',
+        invalidPhone: 'Die angegebene Telefonnummer ist ungültig. Bitte versuchen Sie es erneut.',
+        slotUnavailable: 'Der ausgewählte Zeitraum ist nicht verfügbar. Bitte wählen Sie einen anderen Zeitraum.',
+        userNotFound: 'Benutzer nicht gefunden. Bitte geben Sie eine gültige Telefonnummer an.',
+    },
+    hi: {
+        greeting: 'नमस्ते! मैं आपका एआई अपॉइंटमेंट असिस्टेंट हूँ। मैं आपकी कैसे मदद कर सकता हूँ?',
+        startCall: 'कॉल शुरू करें',
+        endCall: 'कॉल समाप्त करें',
+        bookAppointment: 'अपॉइंटमेंट बुक करें',
+        manageSchedule: 'शेड्यूल प्रबंधित करें',
+        getSummary: 'सारांश प्राप्त करें',
+        askPhone: 'कृपया आपने पहचान करने के लिए अपना फोन नंबर प्रदान करें।',
+        askName: 'क्या आप मुझे अपना नाम बता सकते हैं?',
+        askTime: 'आप अपनी अपॉइंटमेंट के लिए किस समय बुक करना चाहते हैं?',
+        askDate: 'आप अपनी अपॉइंटमेंट के लिए कौन सी तारीख पसंद करते हैं?',
+        askPurpose: 'आपकी अपॉइंटमेंट का उद्देश्य क्या है?',
+        confirmBooking: 'मैं आपकी %date% को %time% पर अपॉइंटमेंट बुक करूंगा। क्या यह सही है?',
+        bookingConfirmed: 'आपकी अपॉइंटमेंट की पुष्टि हो गई है! आपको 24 घंटे पहले एक अनुस्मारक मिलेगा।',
+        invalidPhone: 'आपके द्वारा प्रदान किया गया फोन नंबर अमान्य है। कृपया फिर से प्रयास करें।',
+        slotUnavailable: 'चयनित समय स्लॉट उपलब्ध नहीं है। कृपया दूसरा समय चुनें।',
+        userNotFound: 'उपयोगकर्ता नहीं मिला। कृपया एक वैध फोन नंबर प्रदान करें।',
+    },
+    ja: {
+        greeting: 'こんにちは！私はあなたのAIアポイントメントアシスタントです。今日はどうお手伝いしましょうか？',
+        startCall: 'コールを開始',
+        endCall: 'コールを終了',
+        bookAppointment: 'アポイントメントを予約',
+        manageSchedule: 'スケジュールを管理',
+        getSummary: '概要を取得',
+        askPhone: 'あなたを特定するために、電話番号を入力してください。',
+        askName: 'お名前を教えていただけますか？',
+        askTime: 'アポイントメントをいつ予約したいですか？',
+        askDate: 'アポイントメント希望日はいつですか？',
+        askPurpose: 'アポイントメントの目的は何ですか？',
+        confirmBooking: '%date%の%time%にアポイントメントを予約します。これで正しいですか？',
+        bookingConfirmed: 'アポイントメントが確認されました！24時間前にリマインダーを受け取ります。',
+        invalidPhone: '入力された電話番号は無効です。もう一度やり直してください。',
+        slotUnavailable: '選択された時間帯は利用できません。別の時間を選択してください。',
+        userNotFound: 'ユーザーが見つかりません。有効な電話番号を入力してください。',
+    },
+    zh: {
+        greeting: '你好！我是你的人工智能预约助手。我今天能帮你什么？',
+        startCall: '开始通话',
+        endCall: '结束通话',
+        bookAppointment: '预约',
+        manageSchedule: '管理日程',
+        getSummary: '获取摘要',
+        askPhone: '请提供您的电话号码，以便我识别您。',
+        askName: '请问您叫什么名字？',
+        askTime: '您想在什么时间预约？',
+        askDate: '您希望在哪一天预约？',
+        askPurpose: '您的预约目的是什么？',
+        confirmBooking: '我将在%date%的%time%为您预约。这是正确的吗？',
+        bookingConfirmed: '您的预约已确认！您将在24小时前收到提醒。',
+        invalidPhone: '您提供的电话号码无效。请重试。',
+        slotUnavailable: '所选时间段不可用。请选择其他时间。',
+        userNotFound: '找不到用户。请提供有效的电话号码。',
+    },
+};
+
+export const getTranslation = (key: string, language?: Language): string => {
+    const lang = language || useLanguageStore.getState().language;
+    return translations[lang]?.[key] || translations.en[key] || key;
+};

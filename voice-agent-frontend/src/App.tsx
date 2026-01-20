@@ -7,6 +7,7 @@ import { ChatPanel } from './components/Chat';
 import { CallControls, CallStatus } from './components/Call';
 import { ToolDisplay } from './components/ToolDisplay';
 import { CallSummary } from './components/Summary';
+import { LanguageSelector } from './components/UI/LanguageSelector';
 import type { AvatarState } from './types';
 
 const App: React.FC = () => {
@@ -56,6 +57,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4">
+              <LanguageSelector />
               <button
                 onClick={() => setShowInfo(!showInfo)}
                 className="p-2 rounded-lg hover:bg-gray-100 transition-colors"

@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 
 interface UseAudioOptions {
   onAudioData?: (data: Float32Array) => void;
-  sampleRate?: number;
+  targetSampleRate?: number;
 }
 
 interface UseAudioReturn {
@@ -13,8 +13,38 @@ interface UseAudioReturn {
   audioLevel: number;
 }
 
+// Resample audio from source rate to target rate
+function resampleAudio(
+  inputData: Float32Array,
+  sourceSampleRate: number,
+  targetSampleRate: number
+): Float32Array {
+  if (sourceSampleRate === targetSampleRate) {
+    return inputData;
+  }
+
+  const ratio = sourceSampleRate / targetSampleRate;
+  const outputLength = Math.round(inputData.length / ratio);
+  const output = new Float32Array(outputLength);
+
+  for (let i = 0; i < outputLength; i++) {
+    const sourceIndex = i * ratio;
+    const index = Math.floor(sourceIndex);
+    const fraction = sourceIndex - index;
+
+    if (index + 1 < inputData.length) {
+      // Linear interpolation
+      output[i] = inputData[index] * (1 - fraction) + inputData[index + 1] * fraction;
+    } else {
+      output[i] = inputData[index];
+    }
+  }
+
+  return output;
+}
+
 export function useAudio(options: UseAudioOptions = {}): UseAudioReturn {
-  const { onAudioData, sampleRate = 16000 } = options;
+  const { onAudioData, targetSampleRate = 16000 } = options;
 
   const [isRecording, setIsRecording] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
@@ -24,6 +54,7 @@ export function useAudio(options: UseAudioOptions = {}): UseAudioReturn {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
 
   useEffect(() => {
     // Check if audio recording is supported
@@ -40,10 +71,9 @@ export function useAudio(options: UseAudioOptions = {}): UseAudioReturn {
     if (isRecording) return;
 
     try {
-      // Get microphone access
+      // Get microphone access - let browser choose optimal sample rate
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
@@ -53,9 +83,12 @@ export function useAudio(options: UseAudioOptions = {}): UseAudioReturn {
 
       mediaStreamRef.current = stream;
 
-      // Create audio context
-      const audioContext = new AudioContext({ sampleRate });
+      // Create audio context with default sample rate (browser native)
+      const audioContext = new AudioContext();
       audioContextRef.current = audioContext;
+
+      const sourceSampleRate = audioContext.sampleRate;
+      console.log(`Audio context sample rate: ${sourceSampleRate}Hz, target: ${targetSampleRate}Hz`);
 
       // Create source from microphone
       const source = audioContext.createMediaStreamSource(stream);
@@ -67,19 +100,24 @@ export function useAudio(options: UseAudioOptions = {}): UseAudioReturn {
       source.connect(analyser);
 
       // Create script processor for raw audio data
-      // Note: ScriptProcessorNode is deprecated but widely supported
-      // AudioWorklet is the modern alternative but requires more setup
       const bufferSize = 4096;
       const scriptProcessor = audioContext.createScriptProcessor(
         bufferSize,
         1,
         1
       );
+      scriptProcessorRef.current = scriptProcessor;
 
       scriptProcessor.onaudioprocess = (event) => {
         if (onAudioData) {
           const inputData = event.inputBuffer.getChannelData(0);
-          onAudioData(new Float32Array(inputData));
+          // Resample to target sample rate (16kHz for Deepgram)
+          const resampledData = resampleAudio(
+            new Float32Array(inputData),
+            sourceSampleRate,
+            targetSampleRate
+          );
+          onAudioData(resampledData);
         }
       };
 
@@ -102,11 +140,12 @@ export function useAudio(options: UseAudioOptions = {}): UseAudioReturn {
       updateAudioLevel();
 
       setIsRecording(true);
+      console.log('Recording started');
     } catch (error) {
       console.error('Failed to start recording:', error);
       throw error;
     }
-  }, [isRecording, onAudioData, sampleRate]);
+  }, [isRecording, onAudioData, targetSampleRate]);
 
   const stopRecording = useCallback(() => {
     // Stop animation frame

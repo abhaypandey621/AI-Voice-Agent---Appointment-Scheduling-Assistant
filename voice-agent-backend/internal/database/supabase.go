@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/voice-agent/backend/internal/config"
@@ -77,7 +78,8 @@ func (s *SupabaseClient) doRequest(method, endpoint string, body interface{}, re
 // User operations
 func (s *SupabaseClient) GetUserByPhone(phone string) (*models.User, error) {
 	var users []models.User
-	endpoint := fmt.Sprintf("users?phone_number=eq.%s", phone)
+	encodedPhone := url.QueryEscape(phone)
+	endpoint := fmt.Sprintf("users?phone_number=eq.%s", encodedPhone)
 
 	if err := s.doRequest("GET", endpoint, nil, &users); err != nil {
 		return nil, err
@@ -152,7 +154,7 @@ func (s *SupabaseClient) UpdateAppointment(apt *models.Appointment) error {
 
 func (s *SupabaseClient) CheckSlotAvailability(dateTime time.Time, duration int) (bool, error) {
 	// Check if there's any overlapping appointment
-	// An appointment overlaps if it starts before the requested slot ends 
+	// An appointment overlaps if it starts before the requested slot ends
 	// and its end time (date_time + duration) is after the requested slot starts
 	requestedStart := dateTime
 	requestedEnd := dateTime.Add(time.Duration(duration) * time.Minute)
@@ -184,12 +186,34 @@ func (s *SupabaseClient) CheckSlotAvailability(dateTime time.Time, duration int)
 	return true, nil
 }
 
+// GetUpcomingAppointments gets all upcoming appointments for a user (filters locally, no DB timestamp issues)
 func (s *SupabaseClient) GetUpcomingAppointments(phone string) ([]models.Appointment, error) {
+	// Get all appointments for the user
+	appointments, err := s.GetAppointmentsByPhone(phone)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter for upcoming appointments only (done in Go, not in DB query)
+	now := time.Now()
+	var upcoming []models.Appointment
+	for _, apt := range appointments {
+		if apt.DateTime.After(now) && apt.Status == "booked" {
+			upcoming = append(upcoming, apt)
+		}
+	}
+
+	return upcoming, nil
+}
+
+// GetUpcomingAppointmentsInWindow gets all upcoming appointments within a time window
+func (s *SupabaseClient) GetUpcomingAppointmentsInWindow(from time.Time, to time.Time) ([]models.Appointment, error) {
 	var appointments []models.Appointment
-	now := time.Now().Format(time.RFC3339)
+	fromStr := from.Format(time.RFC3339)
+	toStr := to.Format(time.RFC3339)
 	endpoint := fmt.Sprintf(
-		"appointments?user_phone=eq.%s&status=eq.booked&date_time=gte.%s&order=date_time.asc",
-		phone, now,
+		"appointments?status=eq.booked&date_time=gte.%s&date_time=lte.%s&order=date_time.asc",
+		fromStr, toStr,
 	)
 
 	if err := s.doRequest("GET", endpoint, nil, &appointments); err != nil {

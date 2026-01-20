@@ -46,13 +46,14 @@ The system uses advanced AI services for speech recognition, natural language un
 
 3. **Intelligent Tool Calling**
    - Automatic intent recognition and tool selection
-   - 7 specialized tools for appointment management:
-     - `identify_user` - User identification by phone
+   - 8 specialized tools for appointment management:
+     - `identify_user` - User identification by phone with validation
      - `fetch_slots` - Available time slot checking
      - `book_appointment` - Appointment booking with conflict prevention
      - `retrieve_appointments` - Appointment history retrieval
      - `cancel_appointment` - Appointment cancellation
      - `modify_appointment` - Appointment modification
+     - `process_payment` - Payment processing via Stripe
      - `end_conversation` - Graceful conversation termination
 
 4. **Call Summary & Analytics**
@@ -67,6 +68,12 @@ The system uses advanced AI services for speech recognition, natural language un
    - Avatar state synchronization
    - Cost tracking and display
 
+6. **Additional Features** ✨
+   - **Phone Number Validation**: Multi-country phone number validation (US, IN, UK, CA, AU, etc.)
+   - **Appointment Reminders**: Automatic reminders at 24 hours, 1 hour, and on the day
+   - **Payment Integration**: Stripe integration for appointment payments
+   - **Multi-Language Support**: 7 languages (English, Spanish, French, German, Hindi, Japanese, Chinese)
+
 ## 🛠️ Tech Stack
 
 ### Backend
@@ -78,6 +85,7 @@ The system uses advanced AI services for speech recognition, natural language un
 - **Speech-to-Text**: Deepgram API
 - **Text-to-Speech**: Cartesia API
 - **LLM**: OpenAI API (or compatible)
+- **Payments**: Stripe API
 - **Avatar**: Tavus API
 - **Real-time**: WebSocket for bidirectional communication
 
@@ -548,6 +556,114 @@ POST /api/avatar/session/:id/end
 - **Audio Streaming**: Real-time WebSocket binary transmission
 - **Audio Playback**: Web Audio API for TTS output
 - **Audio Level**: Visual feedback with waveform animation
+
+## ✨ Advanced Features
+
+### 1. Phone Number Validation
+
+Multi-country phone number validation with automatic formatting:
+
+```go
+validator := utils.NewPhoneValidator()
+isValid, normalized, err := validator.ValidatePhoneNumber("+1-555-123-4567")
+// Returns: true, "+15551234567", nil
+```
+
+**Supported Countries**: US, India, UK, Canada, Australia, and international format
+
+**Features**:
+- Format validation (regex-based)
+- E.164 normalization
+- Country-specific patterns
+- Error messages
+
+### 2. Appointment Reminders
+
+Automatic reminder system with configurable timing:
+
+```go
+reminderService := reminder.NewReminderService(cfg)
+reminderService.RegisterCallback(reminder.ReminderType24Hour, func(apt *models.Appointment, rt reminder.ReminderType) {
+    // Send 24-hour before reminder
+})
+reminderService.LoadPendingAppointments()
+```
+
+**Reminder Types**:
+- `24_hours` - Reminder 24 hours before appointment
+- `1_hour` - Reminder 1 hour before appointment
+- `on_day` - Reminder on the day of appointment
+
+**How it Works**:
+1. Service loads upcoming appointments on startup
+2. Checks every minute for pending reminders
+3. Executes callbacks when reminder time arrives
+4. Tracks sent reminders to avoid duplicates
+
+### 3. Payment Integration (Stripe)
+
+Seamless payment processing for appointment bookings:
+
+```go
+paymentService := payment.NewPaymentService(cfg)
+
+// Create payment intent
+intent, err := paymentService.CreatePaymentIntent(
+    userPhone, userName, appointmentID,
+    1500, // $15.00 in cents
+    "Appointment booking payment",
+)
+
+// Process payment
+record, err := paymentService.ProcessPayment(...)
+```
+
+**Features**:
+- Payment intent creation
+- One-time charge processing
+- Customer management
+- Invoice generation
+- Refund handling
+- Cost calculation with discounts and taxes
+
+**Supported**:
+- Stripe Charges API
+- Payment Intents
+- Subscriptions (for recurring appointments)
+- Invoicing
+
+### 4. Multi-Language Support
+
+7 languages supported with complete localization:
+
+**Supported Languages**:
+- 🇺🇸 English (en)
+- 🇪🇸 Spanish (es)
+- 🇫🇷 French (fr)
+- 🇩🇪 German (de)
+- 🇮🇳 Hindi (hi)
+- 🇯🇵 Japanese (ja)
+- 🇨🇳 Chinese (zh)
+
+**Backend Implementation** (`pkg/i18n/translations.go`):
+```go
+translations := i18n.NewTranslations()
+greeting := translations.GetTranslation(i18n.LanguageSpanish, "greeting", "")
+```
+
+**Frontend Implementation** (`src/utils/i18n.ts`):
+```tsx
+import { useLanguageStore, getTranslation } from './utils/i18n';
+
+// In component
+const { language, setLanguage } = useLanguageStore();
+const message = getTranslation('bookingConfirmed');
+```
+
+**Language Selector Component**:
+- Available in header
+- Persists to localStorage
+- Real-time UI updates
 
 ## 🐳 Deployment
 

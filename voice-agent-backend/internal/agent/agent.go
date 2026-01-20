@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -141,30 +142,10 @@ func NewVoiceAgent(cfg *config.Config, roomName string, agentCfg *AgentConfig) (
 
 // Start starts the voice agent
 func (a *VoiceAgent) Start() error {
-	// Initialize STT streaming
-	sttClient, err := a.deepgramService.NewStreamingClient(
-		func(result deepgram.TranscriptResult) {
-			if a.onTranscript != nil {
-				a.onTranscript(result.Transcript, result.IsFinal)
-			}
+	// Note: STT streaming is initialized lazily when first audio arrives
+	// This prevents Deepgram timeout when user hasn't started speaking yet
 
-			// Process final transcripts
-			if result.IsFinal && result.Transcript != "" {
-				go a.ProcessUserInput(result.Transcript)
-			}
-		},
-		func(err error) {
-			if a.onError != nil {
-				a.onError(fmt.Errorf("STT error: %w", err))
-			}
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to start STT: %w", err)
-	}
-	a.sttClient = sttClient
-
-	// Initialize TTS streaming
+	// Initialize TTS streaming (optional)
 	ttsClient, err := a.cartesiaService.NewStreamingClient(
 		func(audio []byte) {
 			if a.onAudioOutput != nil {
@@ -193,6 +174,43 @@ func (a *VoiceAgent) Start() error {
 	return nil
 }
 
+// initSTT initializes the STT streaming client (called on first audio)
+func (a *VoiceAgent) initSTT() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.sttClient != nil {
+		return nil // Already initialized
+	}
+
+	sttClient, err := a.deepgramService.NewStreamingClient(
+		func(result deepgram.TranscriptResult) {
+			if a.onTranscript != nil {
+				a.onTranscript(result.Transcript, result.IsFinal)
+			}
+
+			// Process final transcripts
+			if result.IsFinal && result.Transcript != "" {
+				go a.ProcessUserInput(result.Transcript)
+			}
+		},
+		func(err error) {
+			if a.onError != nil {
+				a.onError(fmt.Errorf("STT error: %w", err))
+			}
+			// Reset client so it can be reinitialized
+			a.mu.Lock()
+			a.sttClient = nil
+			a.mu.Unlock()
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to start STT: %w", err)
+	}
+	a.sttClient = sttClient
+	return nil
+}
+
 // Stop stops the voice agent
 func (a *VoiceAgent) Stop() {
 	a.cancel()
@@ -208,16 +226,22 @@ func (a *VoiceAgent) Stop() {
 
 // SendAudio sends audio data for transcription
 func (a *VoiceAgent) SendAudio(audioData []byte) error {
+	// Lazy initialize STT on first audio data
 	if a.sttClient == nil {
-		return fmt.Errorf("STT client not initialized")
+		if err := a.initSTT(); err != nil {
+			return err
+		}
 	}
 	return a.sttClient.SendAudio(audioData)
 }
 
 // ProcessUserInput processes user speech input
 func (a *VoiceAgent) ProcessUserInput(text string) {
+	log.Printf("ProcessUserInput called with: %s", text)
+
 	a.mu.Lock()
 	if a.isProcessing {
+		log.Printf("Already processing, skipping input")
 		a.mu.Unlock()
 		return
 	}
@@ -240,13 +264,16 @@ func (a *VoiceAgent) ProcessUserInput(text string) {
 	a.mu.Unlock()
 
 	// Get LLM response
+	log.Printf("Calling LLM with %d messages", len(a.messages))
 	response, err := a.llmService.Chat(a.ctx, a.messages, a.toolExecutor)
 	if err != nil {
+		log.Printf("LLM error: %v", err)
 		if a.onError != nil {
 			a.onError(fmt.Errorf("LLM error: %w", err))
 		}
 		return
 	}
+	log.Printf("LLM response: %s", response.Content)
 
 	// Add assistant message
 	a.mu.Lock()
@@ -279,6 +306,7 @@ func (a *VoiceAgent) ProcessUserInput(text string) {
 
 // ProcessTextInput processes direct text input (for testing)
 func (a *VoiceAgent) ProcessTextInput(text string) {
+	log.Printf("Agent processing text input: %s", text)
 	if a.onTranscript != nil {
 		a.onTranscript(text, true)
 	}

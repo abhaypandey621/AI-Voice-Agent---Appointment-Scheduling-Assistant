@@ -11,7 +11,7 @@ func GetToolDefinitions() []openai.Tool {
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
 				Name:        "identify_user",
-				Description: "Identify the user by their phone number. Use this when you need to know who you're speaking with or before booking/retrieving appointments.",
+				Description: "Identify the user by their phone number, name, and email. Use this when you need to know who you're speaking with or before booking/retrieving appointments. All three fields are required.",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -21,10 +21,14 @@ func GetToolDefinitions() []openai.Tool {
 						},
 						"name": map[string]interface{}{
 							"type":        "string",
-							"description": "The user's name if provided",
+							"description": "The user's full name (cannot be empty or 'null')",
+						},
+						"email": map[string]interface{}{
+							"type":        "string",
+							"description": "The user's email address in format user@domain.com (cannot be empty or 'null')",
 						},
 					},
-					"required": []string{"phone_number"},
+					"required": []string{"phone_number", "name", "email"},
 				},
 			},
 		},
@@ -163,6 +167,35 @@ func GetToolDefinitions() []openai.Tool {
 				},
 			},
 		},
+		{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        "process_payment",
+				Description: "Process payment for an appointment booking. Returns payment details and confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"appointment_id": map[string]interface{}{
+							"type":        "string",
+							"description": "The appointment ID to pay for",
+						},
+						"amount_cents": map[string]interface{}{
+							"type":        "integer",
+							"description": "The amount in cents (e.g., 1500 for $15.00)",
+						},
+						"payment_method": map[string]interface{}{
+							"type":        "string",
+							"description": "Payment method (card, stripe_token, etc.)",
+						},
+						"description": map[string]interface{}{
+							"type":        "string",
+							"description": "Payment description for the transaction",
+						},
+					},
+					"required": []string{"appointment_id", "amount_cents", "payment_method"},
+				},
+			},
+		},
 	}
 }
 
@@ -175,4 +208,5 @@ const (
 	ToolCancelAppointment    = "cancel_appointment"
 	ToolModifyAppointment    = "modify_appointment"
 	ToolEndConversation      = "end_conversation"
+	ToolProcessPayment       = "process_payment"
 )

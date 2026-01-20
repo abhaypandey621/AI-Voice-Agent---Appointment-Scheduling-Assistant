@@ -11,6 +11,7 @@ require (
 	github.com/livekit/server-sdk-go/v2 v2.9.2
 	github.com/rs/cors v1.10.1
 	github.com/sashabaranov/go-openai v1.24.0
+	github.com/stripe/stripe-go/v72 v72.122.0
 )
 
 require (
