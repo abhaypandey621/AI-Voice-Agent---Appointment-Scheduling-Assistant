@@ -647,11 +647,11 @@ See `voice-agent-backend/migrations/001_initial_schema.sql` for full schema.
 
 ## 📝 License
 
-This project is part of the SuperBryn AI Engineer Task assignment.
+MIT License
 
 ## 🤝 Contributing
 
-This is an assignment project. For questions or issues, please refer to the project requirements.
+
 
 ---
 
