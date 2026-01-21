@@ -8,7 +8,12 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
-class APIService {
+// Log the API URL being used (for debugging)
+if (import.meta.env.DEV) {
+  console.log('[API Service] Using API URL:', API_BASE_URL);
+} else {
+  console.log('[API Service] Production API URL configured');
+} class APIService {
   private baseUrl: string;
 
   constructor(baseUrl: string = API_BASE_URL) {

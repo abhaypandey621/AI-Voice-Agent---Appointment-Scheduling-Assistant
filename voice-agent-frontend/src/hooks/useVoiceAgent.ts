@@ -130,7 +130,7 @@ export function useVoiceAgent(
         console.log('Backend health check passed');
       } catch (healthError) {
         console.error('Backend health check failed:', healthError);
-        throw new Error('Backend server is not responding. Please ensure the backend is running on port 8080.');
+        throw new Error(`Connection Failed. Please try again later.`);
       }
 
       // Create avatar session if available
