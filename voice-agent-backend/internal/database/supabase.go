@@ -122,7 +122,8 @@ func (s *SupabaseClient) CreateAppointment(apt *models.Appointment) error {
 
 func (s *SupabaseClient) GetAppointmentsByPhone(phone string) ([]models.Appointment, error) {
 	var appointments []models.Appointment
-	endpoint := fmt.Sprintf("appointments?user_phone=eq.%s&order=date_time.desc", phone)
+	encodedPhone := url.QueryEscape(phone)
+	endpoint := fmt.Sprintf("appointments?user_phone=eq.%s&order=date_time.desc", encodedPhone)
 
 	if err := s.doRequest("GET", endpoint, nil, &appointments); err != nil {
 		return nil, err
@@ -237,7 +238,8 @@ func (s *SupabaseClient) SaveCallSummary(summary *models.CallSummary) error {
 
 func (s *SupabaseClient) GetCallSummariesByPhone(phone string) ([]models.CallSummary, error) {
 	var summaries []models.CallSummary
-	endpoint := fmt.Sprintf("call_summaries?user_phone=eq.%s&order=created_at.desc", phone)
+	encodedPhone := url.QueryEscape(phone)
+	endpoint := fmt.Sprintf("call_summaries?user_phone=eq.%s&order=created_at.desc", encodedPhone)
 
 	if err := s.doRequest("GET", endpoint, nil, &summaries); err != nil {
 		return nil, err

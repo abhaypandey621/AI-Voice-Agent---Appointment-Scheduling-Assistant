@@ -20,11 +20,20 @@ import (
 )
 
 func main() {
+	// Recover from any panics
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("FATAL: Panic recovered - %v", r)
+		}
+	}()
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	log.Printf("Configuration loaded - Environment: %s, Port: %s", cfg.Environment, cfg.Port)
 
 	// Set Gin mode
 	if cfg.Environment == "production" {
@@ -34,12 +43,24 @@ func main() {
 	// Initialize database
 	if err := database.Initialize(cfg); err != nil {
 		log.Printf("Warning: Failed to initialize database: %v", err)
+	} else {
+		log.Println("Database initialized successfully")
 	}
 
-	// Initialize services
+	// Initialize services (with error recovery)
+	log.Println("Initializing services...")
 	livekitService := livekit.NewService(cfg)
+	if livekitService == nil {
+		log.Println("Warning: LiveKit service is nil, will operate with limited functionality")
+	}
+
 	avatarService := avatar.NewService(cfg)
+	if avatarService == nil {
+		log.Println("Warning: Avatar service is nil, will operate with limited functionality")
+	}
+
 	wsManager := websocket.NewManager(cfg)
+	log.Println("Services initialized")
 
 	// Initialize handlers
 	h := handlers.NewHandler(cfg, livekitService, avatarService, wsManager)
@@ -58,11 +79,15 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Starting server on port %s", cfg.Port)
+		log.Printf("==> Starting server on port %s", cfg.Port)
+		log.Printf("==> Server listening at http://0.0.0.0:%s", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)
 		}
 	}()
+
+	// Give the server a moment to start listening
+	time.Sleep(1 * time.Second)
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
