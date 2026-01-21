@@ -104,17 +104,27 @@ func (m *Manager) HandleConnection(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 		OnCallEnd: func(summary *models.CallSummary, cost *models.CostBreakdown) {
-			client.sendMessage(models.WSMessage{
+			log.Printf("[WebSocket] OnCallEnd callback triggered")
+			log.Printf("[WebSocket] Summary: %+v", summary)
+			log.Printf("[WebSocket] Cost: %+v", cost)
+
+			summaryMsg := models.WSMessage{
 				Type: models.WSTypeCallSummary,
 				Payload: map[string]interface{}{
 					"summary": summary,
 					"cost":    cost,
 				},
-			})
-			client.sendMessage(models.WSMessage{
+			}
+			log.Printf("[WebSocket] Sending call_summary message")
+			client.sendMessage(summaryMsg)
+
+			endMsg := models.WSMessage{
 				Type:    models.WSTypeCallEnd,
 				Payload: "Call ended",
-			})
+			}
+			log.Printf("[WebSocket] Sending call_end message")
+			client.sendMessage(endMsg)
+			log.Printf("[WebSocket] OnCallEnd completed")
 		},
 		OnError: func(err error) {
 			client.sendMessage(models.WSMessage{
@@ -225,8 +235,13 @@ func (c *Client) readPump(m *Manager) {
 				}
 
 			case "end_call":
+				log.Printf("[WebSocket] Received end_call request")
 				if c.agent != nil {
+					log.Printf("[WebSocket] Calling agent.EndCall()")
 					c.agent.EndCall()
+					log.Printf("[WebSocket] agent.EndCall() completed")
+				} else {
+					log.Printf("[WebSocket] WARNING: Agent is nil, cannot end call")
 				}
 
 			case "get_session":

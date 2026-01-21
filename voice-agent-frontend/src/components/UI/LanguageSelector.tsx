@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLanguageStore, Language, translations } from '../../utils/i18n';
+import { useLanguageStore, Language } from '../../utils/i18n';
 import { Globe } from 'lucide-react';
 
 interface LanguageSelectorProps {

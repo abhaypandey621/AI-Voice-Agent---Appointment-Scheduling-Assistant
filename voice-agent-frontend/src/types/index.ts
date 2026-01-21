@@ -64,6 +64,8 @@ export interface ToolCallPayload {
   name: string;
   arguments: Record<string, unknown>;
   status: 'pending' | 'executing' | 'completed' | 'failed';
+  result?: unknown;
+  error?: string;
 }
 
 export interface ToolResultPayload {
@@ -83,6 +85,7 @@ export interface CallSummary {
   user_preferences: string[];
   key_topics: string[];
   duration: number;
+  duration_seconds?: number;  // Backend sends this instead of duration
   created_at: string;
 }
 

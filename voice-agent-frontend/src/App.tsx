@@ -35,6 +35,14 @@ const App: React.FC = () => {
   const store = useCallStore();
   const [showInfo, setShowInfo] = React.useState(false);
 
+  // Debug log for summary display
+  React.useEffect(() => {
+    console.log('[App] callState:', callState, 'callSummary:', callSummary);
+    if (callSummary) {
+      console.log('[App] Summary data:', JSON.stringify(callSummary, null, 2));
+    }
+  }, [callState, callSummary]);
+
   // Reset to start new call after viewing summary
   const handleCloseSummary = () => {
     disconnect();

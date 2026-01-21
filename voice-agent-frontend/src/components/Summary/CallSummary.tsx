@@ -60,7 +60,7 @@ export const CallSummary: React.FC<CallSummaryProps> = ({
         <div className="flex items-center gap-2 mt-4 text-white/90">
           <Clock className="w-4 h-4" />
           <span className="text-sm">
-            Call duration: {formatDuration(summary.duration)}
+            Call duration: {formatDuration(summary.duration_seconds || summary.duration || 0)}
           </span>
         </div>
       </div>

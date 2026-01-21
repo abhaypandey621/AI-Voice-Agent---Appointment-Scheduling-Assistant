@@ -73,15 +73,15 @@ type ToolCallRecord struct {
 
 // CallSummary represents the summary generated at call end
 type CallSummary struct {
-	ID                 string       `json:"id"`
-	SessionID          string       `json:"session_id"`
-	UserPhone          string       `json:"user_phone,omitempty"`
-	Summary            string       `json:"summary"`
+	ID                 string        `json:"id"`
+	SessionID          string        `json:"session_id"`
+	UserPhone          string        `json:"user_phone,omitempty"`
+	Summary            string        `json:"summary"`
 	AppointmentsBooked []Appointment `json:"appointments_booked"`
-	UserPreferences    []string     `json:"user_preferences"`
-	KeyTopics          []string     `json:"key_topics"`
-	Duration           int          `json:"duration_seconds"`
-	CreatedAt          time.Time    `json:"created_at"`
+	UserPreferences    []string      `json:"user_preferences"`
+	KeyTopics          []string      `json:"key_topics"`
+	Duration           int           `json:"duration"`
+	CreatedAt          time.Time     `json:"created_at"`
 }
 
 // CostBreakdown shows the cost breakdown for a call

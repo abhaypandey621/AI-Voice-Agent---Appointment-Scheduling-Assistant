@@ -83,10 +83,12 @@ export class WebSocketService {
           } else {
             // Text message (JSON)
             try {
+              console.log('[WebSocket] Raw message received:', event.data);
               const message: WSMessage = JSON.parse(event.data);
+              console.log('[WebSocket] Parsed message type:', message.type);
               this.handleMessage(message);
             } catch (e) {
-              console.error('Failed to parse WebSocket message:', e);
+              console.error('Failed to parse WebSocket message:', e, 'Raw data:', event.data);
             }
           }
         };
@@ -151,11 +153,20 @@ export class WebSocketService {
         this.handlers.onToolResult?.(message.payload as ToolResultPayload);
         break;
       case 'call_summary': {
+        console.log('[WebSocket] Received call_summary:', message.payload);
         const summaryPayload = message.payload as { summary: CallSummary; cost: CostBreakdown };
-        this.handlers.onCallSummary?.(summaryPayload.summary, summaryPayload.cost);
+        console.log('[WebSocket] Parsed summary:', summaryPayload.summary);
+        console.log('[WebSocket] Parsed cost:', summaryPayload.cost);
+        if (this.handlers.onCallSummary) {
+          console.log('[WebSocket] Calling onCallSummary handler');
+          this.handlers.onCallSummary(summaryPayload.summary, summaryPayload.cost);
+        } else {
+          console.warn('[WebSocket] No onCallSummary handler registered!');
+        }
         break;
       }
       case 'call_end':
+        console.log('[WebSocket] Received call_end');
         this.handlers.onCallEnd?.();
         break;
       case 'error':

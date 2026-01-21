@@ -365,49 +365,80 @@ func (a *VoiceAgent) synthesizeSpeechREST(text string) {
 }
 
 func (a *VoiceAgent) endConversation() {
+	log.Printf("[endConversation] Starting summary generation for session %s", a.ID)
+
 	a.mu.RLock()
 	messages := make([]models.ConversationMsg, len(a.messages))
 	copy(messages, a.messages)
 	a.mu.RUnlock()
 
+	log.Printf("[endConversation] Copied %d messages for summary", len(messages))
+
 	// Get user's appointments for summary
 	var appointments []models.Appointment
-	if a.toolExecutor.GetUserPhone() != "" {
-		apts, err := database.DB.GetUpcomingAppointments(a.toolExecutor.GetUserPhone())
+	userPhone := a.toolExecutor.GetUserPhone()
+	if userPhone != "" {
+		log.Printf("[endConversation] Fetching appointments for user: %s", userPhone)
+		apts, err := database.DB.GetUpcomingAppointments(userPhone)
 		if err == nil {
 			appointments = apts
+			log.Printf("[endConversation] Found %d appointments", len(appointments))
+		} else {
+			log.Printf("[endConversation] Error fetching appointments: %v", err)
 		}
+	} else {
+		log.Printf("[endConversation] No user phone set, skipping appointment fetch")
 	}
 
 	// Generate summary
+	log.Printf("[endConversation] Generating LLM summary...")
 	summary, err := a.llmService.GenerateSummary(a.ctx, messages, appointments)
 	if err != nil {
+		log.Printf("[endConversation] ERROR generating summary: %v", err)
 		if a.onError != nil {
 			a.onError(fmt.Errorf("summary generation error: %w", err))
 		}
 		summary = &models.CallSummary{
-			Summary:   "Call completed.",
-			CreatedAt: time.Now(),
+			Summary:            "Call completed with the appointment assistant.",
+			AppointmentsBooked: appointments,
+			UserPreferences:    []string{},
+			KeyTopics:          []string{"appointment scheduling"},
+			CreatedAt:          time.Now(),
 		}
+	} else {
+		log.Printf("[endConversation] Summary generated successfully: %s", summary.Summary)
 	}
 
 	// Set session info
+	summary.ID = uuid.New().String()
 	summary.SessionID = a.ID
-	summary.UserPhone = a.toolExecutor.GetUserPhone()
+	summary.UserPhone = userPhone
 	summary.Duration = int(time.Since(a.startTime).Seconds())
+
+	log.Printf("[endConversation] Call duration: %d seconds", summary.Duration)
 
 	// Calculate costs
 	cost := a.calculateCosts()
+	log.Printf("[endConversation] Costs calculated - Total: $%.4f", cost.TotalCost)
 
 	// Save summary to database
 	if database.DB != nil {
-		_ = database.DB.SaveCallSummary(summary)
+		if err := database.DB.SaveCallSummary(summary); err != nil {
+			log.Printf("[endConversation] ERROR saving summary to database: %v", err)
+		} else {
+			log.Printf("[endConversation] Summary saved to database")
+		}
 	}
 
 	// Notify call end
 	if a.onCallEnd != nil {
+		log.Printf("[endConversation] Sending call summary to client")
 		a.onCallEnd(summary, cost)
+	} else {
+		log.Printf("[endConversation] WARNING: onCallEnd callback is nil")
 	}
+
+	log.Printf("[endConversation] Completed")
 }
 
 func (a *VoiceAgent) calculateCosts() *models.CostBreakdown {

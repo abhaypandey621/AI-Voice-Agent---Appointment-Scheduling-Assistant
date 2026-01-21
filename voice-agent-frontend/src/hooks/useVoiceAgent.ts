@@ -180,11 +180,21 @@ export function useVoiceAgent(
           store.updateToolCall(payload);
         },
         onCallSummary: (summary: CallSummary, cost: CostBreakdown) => {
+          console.log('[useVoiceAgent] Received call summary:', summary);
+          console.log('[useVoiceAgent] Received cost breakdown:', cost);
           store.setCallSummary(summary);
           store.setCostBreakdown(cost);
+          console.log('[useVoiceAgent] Call state after setCallSummary:', store.callState);
         },
         onCallEnd: () => {
-          store.setCallState('ended');
+          // Get the latest state from the store
+          const currentState = useCallStore.getState();
+          console.log('[useVoiceAgent] Call ended, current callState:', currentState.callState);
+          console.log('[useVoiceAgent] Current callSummary:', currentState.callSummary);
+          // Only set ended if we don't have a summary yet (summary sets it too)
+          if (!currentState.callSummary) {
+            store.setCallState('ended');
+          }
           store.setConnected(false);
           stopMicRecording();
         },
@@ -195,8 +205,14 @@ export function useVoiceAgent(
           playAudio(data);
         },
         onDisconnect: () => {
+          // Get the latest state from the store
+          const currentState = useCallStore.getState();
+          console.log('[useVoiceAgent] Disconnected, callSummary exists:', !!currentState.callSummary);
           store.setConnected(false);
-          store.setCallState('idle');
+          // Don't reset to idle if we have a summary - keep it at 'ended'
+          if (!currentState.callSummary) {
+            store.setCallState('idle');
+          }
         },
       });
     } catch (error) {

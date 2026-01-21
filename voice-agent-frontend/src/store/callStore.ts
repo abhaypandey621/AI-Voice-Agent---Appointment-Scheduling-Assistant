@@ -82,12 +82,26 @@ export const useCallStore = create<CallStore>((set) => ({
   setConnection: (agentId, roomName) =>
     set({ agentId, roomName, isConnected: true, callState: 'connected' }),
 
-  setCallState: (callState) => set({ callState }),
+  setCallState: (callState) => {
+    console.log('[CallStore] setCallState called with:', callState);
+    return set({ callState });
+  },
 
   setAvatarState: (avatarState) => set({ avatarState }),
 
   setConnected: (isConnected) =>
-    set({ isConnected, callState: isConnected ? 'connected' : 'idle' }),
+    set((state) => {
+      const newCallState = isConnected
+        ? 'connected'
+        : state.callSummary
+        ? 'ended'
+        : 'idle';
+      console.log('[CallStore] setConnected called:', isConnected, 'hasSummary:', !!state.callSummary, 'newCallState:', newCallState);
+      return {
+        isConnected,
+        callState: newCallState,
+      };
+    }),
 
   setError: (error) => set({ error }),
 
@@ -111,18 +125,31 @@ export const useCallStore = create<CallStore>((set) => ({
     set((state) => ({
       toolCalls: state.toolCalls.map((tc) =>
         tc.id === result.id
-          ? { ...tc, status: result.error ? 'failed' : 'completed' }
+          ? {
+              ...tc,
+              status: result.error ? 'failed' : 'completed',
+              result: result.result,
+              error: result.error,
+            }
           : tc
       ),
       activeToolCall:
         state.activeToolCall?.id === result.id
-          ? { ...state.activeToolCall, status: result.error ? 'failed' : 'completed' }
+          ? {
+              ...state.activeToolCall,
+              status: result.error ? 'failed' : 'completed',
+              result: result.result,
+              error: result.error,
+            }
           : state.activeToolCall,
     })),
 
   setActiveToolCall: (activeToolCall) => set({ activeToolCall }),
 
-  setCallSummary: (callSummary) => set({ callSummary, callState: 'ended' }),
+  setCallSummary: (callSummary) => {
+    console.log('[CallStore] setCallSummary called, setting callState to ended');
+    return set({ callSummary, callState: 'ended' });
+  },
 
   setCostBreakdown: (costBreakdown) => set({ costBreakdown }),
 
@@ -130,7 +157,11 @@ export const useCallStore = create<CallStore>((set) => ({
 
   setAvatarConversationId: (avatarConversationId) => set({ avatarConversationId }),
 
-  reset: () => set(initialState),
+  reset: () => {
+    console.log('[CallStore] reset called - clearing all state');
+    console.trace('[CallStore] reset call stack');
+    return set(initialState);
+  },
 }));
 
 export default useCallStore;

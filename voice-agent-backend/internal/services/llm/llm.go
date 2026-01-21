@@ -244,24 +244,43 @@ func (s *Service) Chat(ctx context.Context, messages []models.ConversationMsg, t
 
 // GenerateSummary creates a call summary
 func (s *Service) GenerateSummary(ctx context.Context, messages []models.ConversationMsg, appointments []models.Appointment) (*models.CallSummary, error) {
-	summaryPrompt := `Based on the conversation history provided, generate a comprehensive call summary with the following information:
-1. A brief summary of the conversation (2-3 sentences)
-2. List any appointments that were booked, modified, or cancelled
-3. List any user preferences or important information mentioned
-4. List the key topics discussed
+	summaryPrompt := `You are analyzing a call between a user and an AI appointment assistant. Generate a comprehensive call summary.
 
-Respond in JSON format:
+Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
 {
-  "summary": "Brief summary of the call",
-  "appointments_mentioned": ["list of appointment actions"],
-  "user_preferences": ["list of preferences"],
-  "key_topics": ["list of topics"]
-}`
+  "summary": "A 2-3 sentence summary of what happened in the call",
+  "user_preferences": ["preference 1", "preference 2"],
+  "key_topics": ["topic 1", "topic 2"]
+}
+
+Guidelines:
+- "summary": Describe what the user wanted and what actions were taken
+- "user_preferences": List any stated preferences (times, days, contact methods, etc.)
+- "key_topics": List the main topics discussed (booking, cancellation, inquiry, etc.)`
 
 	// Build conversation text
-	convText := "Conversation:\n"
+	convText := "Conversation History:\n"
 	for _, msg := range messages {
-		convText += fmt.Sprintf("%s: %s\n", msg.Role, msg.Content)
+		role := msg.Role
+		if role == "assistant" {
+			role = "Agent"
+		} else if role == "user" {
+			role = "User"
+		}
+		convText += fmt.Sprintf("%s: %s\n", role, msg.Content)
+	}
+
+	// Add appointment info if any
+	if len(appointments) > 0 {
+		convText += "\n\nCurrent User Appointments:\n"
+		for _, apt := range appointments {
+			convText += fmt.Sprintf("- %s: %s (%d min) - Status: %s\n",
+				apt.DateTime.Format("Monday, January 2, 2006 at 3:04 PM"),
+				apt.Purpose,
+				apt.Duration,
+				apt.Status,
+			)
+		}
 	}
 
 	resp, err := s.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
@@ -289,17 +308,40 @@ Respond in JSON format:
 		return nil, fmt.Errorf("no response for summary")
 	}
 
+	responseContent := resp.Choices[0].Message.Content
+
 	// Parse the JSON response
 	var summaryData struct {
-		Summary               string   `json:"summary"`
-		AppointmentsMentioned []string `json:"appointments_mentioned"`
-		UserPreferences       []string `json:"user_preferences"`
-		KeyTopics             []string `json:"key_topics"`
+		Summary         string   `json:"summary"`
+		UserPreferences []string `json:"user_preferences"`
+		KeyTopics       []string `json:"key_topics"`
 	}
 
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &summaryData); err != nil {
+	// Try to extract JSON from the response (in case LLM wraps it in markdown)
+	jsonContent := responseContent
+	if idx := findJSONStart(responseContent); idx >= 0 {
+		jsonContent = responseContent[idx:]
+		if endIdx := findJSONEnd(jsonContent); endIdx > 0 {
+			jsonContent = jsonContent[:endIdx+1]
+		}
+	}
+
+	if err := json.Unmarshal([]byte(jsonContent), &summaryData); err != nil {
 		// If JSON parsing fails, use the raw content as summary
-		summaryData.Summary = resp.Choices[0].Message.Content
+		summaryData.Summary = responseContent
+		summaryData.UserPreferences = []string{}
+		summaryData.KeyTopics = []string{"appointment scheduling"}
+	}
+
+	// Ensure we have at least some default values
+	if summaryData.Summary == "" {
+		summaryData.Summary = "Call completed with the appointment assistant."
+	}
+	if summaryData.KeyTopics == nil {
+		summaryData.KeyTopics = []string{}
+	}
+	if summaryData.UserPreferences == nil {
+		summaryData.UserPreferences = []string{}
 	}
 
 	return &models.CallSummary{
@@ -309,6 +351,32 @@ Respond in JSON format:
 		KeyTopics:          summaryData.KeyTopics,
 		CreatedAt:          time.Now(),
 	}, nil
+}
+
+// findJSONStart finds the start of a JSON object in a string
+func findJSONStart(s string) int {
+	for i, c := range s {
+		if c == '{' {
+			return i
+		}
+	}
+	return -1
+}
+
+// findJSONEnd finds the end of a JSON object in a string
+func findJSONEnd(s string) int {
+	depth := 0
+	for i, c := range s {
+		if c == '{' {
+			depth++
+		} else if c == '}' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // GetTokenCount returns total tokens used
