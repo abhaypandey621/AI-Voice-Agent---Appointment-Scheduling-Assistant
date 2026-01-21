@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/sashabaranov/go-openai"
@@ -11,6 +13,31 @@ import (
 	"github.com/voice-agent/backend/internal/models"
 	"github.com/voice-agent/backend/internal/tools"
 )
+
+// filterToolCallAnnouncements removes tool call announcements from LLM responses
+// These are patterns like "[Calling the X tool]" or "[Using X tool for...]"
+func filterToolCallAnnouncements(content string) string {
+	// Pattern to match tool call announcements in square brackets
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`\[Calling the \w+ tool[^\]]*\]`),
+		regexp.MustCompile(`\[Using \w+ tool[^\]]*\]`),
+		regexp.MustCompile(`\[Call \w+ tool[^\]]*\]`),
+		regexp.MustCompile(`\[Calling \w+[^\]]*\]`),
+	}
+
+	result := content
+	for _, pattern := range patterns {
+		result = pattern.ReplaceAllString(result, "")
+	}
+
+	// Clean up extra whitespace
+	result = strings.TrimSpace(result)
+	// Replace multiple spaces with single space
+	spacePattern := regexp.MustCompile(`\s+`)
+	result = spacePattern.ReplaceAllString(result, " ")
+
+	return result
+}
 
 // getSystemPrompt returns the system prompt with current date
 func getSystemPrompt() string {
@@ -219,7 +246,7 @@ func (s *Service) Chat(ctx context.Context, messages []models.ConversationMsg, t
 				s.tokenCount += finalResp.Usage.TotalTokens
 				content := ""
 				if len(finalResp.Choices) > 0 {
-					content = finalResp.Choices[0].Message.Content
+					content = filterToolCallAnnouncements(finalResp.Choices[0].Message.Content)
 				}
 
 				return &Response{
@@ -233,9 +260,9 @@ func (s *Service) Chat(ctx context.Context, messages []models.ConversationMsg, t
 			continue
 		}
 
-		// No tool calls, return the content
+		// No tool calls, return the content (filtered)
 		return &Response{
-			Content:    choice.Message.Content,
+			Content:    filterToolCallAnnouncements(choice.Message.Content),
 			TokensUsed: s.tokenCount,
 			ShouldEnd:  false,
 		}, nil

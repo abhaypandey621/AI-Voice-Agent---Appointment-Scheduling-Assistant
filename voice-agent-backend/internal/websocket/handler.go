@@ -267,25 +267,41 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		c.mu.Lock()
+		if c.conn != nil {
+			c.conn.Close()
+		}
+		c.mu.Unlock()
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.send:
+			c.mu.Lock()
+			conn := c.conn
+			c.mu.Unlock()
+			if conn == nil {
+				return
+			}
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
 
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			c.mu.Lock()
+			conn := c.conn
+			c.mu.Unlock()
+			if conn == nil {
+				return
+			}
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 
